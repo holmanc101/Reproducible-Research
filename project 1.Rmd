@@ -1,0 +1,185 @@
+# Reproducible Research - Project 1
+#### Chris Holman
+
+### Question 1
+It is important to ensure the working directory is correct and read in the file. In this case, we used the `read_csv()` which is party of the tidyverse package. Notice we loaded the library before reading in our data. 
+```{r Reading in dataset}
+getwd()
+
+library(tidyverse)
+
+activity <- read_csv("./activity.csv")
+
+activity_original <- activity
+
+head(activity)
+str(activity)
+
+
+```
+The variables included in this dataset are:
+
+-steps: Number of steps taking in a 5-minute interval (missing values are coded as **NA**)
+-date: The date on which the measurement was taken in YYYY-MM-DD format
+-interval: Identifier for the 5-minute interval in which measurement was taken
+
+The dataset is stored in a comma-separated-value (CSV) file and there are a total of 17,568 observations in this dataset.
+### Question 2 
+Ignore any missing values 
+
+```{r}
+cleanActivity <- activity[!(is.na(activity$steps)),]
+``` 
+Aggregte steps by date
+```{r}
+dailyActivity <- aggregate(steps ~ date, cleanActivity, sum)
+```
+
+Creating a histogram for number of steps taken each day.
+```{r Histogram of total numer of steps taken each day}
+hist(dailyActivity$steps, breaks = 20, xlab = "Steps Taken",
+     main = "Total Number of Steps Taken per Day")
+```
+
+
+```{r Mean and Median of number of steps taken each day}
+library(xtable)
+library(dplyr)
+stepMean <- mean(dailyActivity$steps)
+stepMedian <- median(dailyActivity$steps)
+summary <- summary(dailyActivity)
+```
+The mean calculated is *`stepMean`* and the median is *`stepMedian`*. 
+### Question 3
+
+To calculate the number of steps taken per interval, we need to aggregate by interval
+
+```{r}
+intervalActivity <- aggregate(steps ~ interval, cleanActivity, mean)
+
+```
+
+```{r Time series plot of the average number of stps taken}
+
+stepPlot <- plot(x = intervalActivity$interval, y = intervalActivity$steps, type = "l",
+		 main = "Time Series Plot of Steps taken per Interval",
+		 ylab = "Number of Steps",
+		 xlab = "Intervals (5 mins)"
+		 )  
+	
+```
+Which five minute interval contains the maximum number of steps?
+```{r 5-minute interval that, on average, contains teh maximum number of steps}
+maxSteps <- intervalActivity[grep(max(intervalActivity$steps), intervalActivity$steps),]
+```
+The interval with the most steps is `maxSteps$interval`, with `maxSteps$steps` steps.
+
+### Question 4
+
+Replace NA values in Steps with mean value for that interval
+
+
+```{r Describe and show a strategy for imputing missing data}
+imputedActivity <- activity
+for(x in 1:17568){
+	if(is.na(imputedActivity[x, 1])==TRUE){
+		imputedActivity[x,1] <- intervalActivity[intervalActivity$interval %in% imputedActivity[x,3],2]
+	}
+}
+```
+
+Aggregate steps by day in the new data with imputed step values
+
+```{r}
+imputedActivityDailySteps <- aggregate(steps ~ date, imputedActivity, sum)
+```
+
+
+Create histogram of new imputed data.
+
+```{r Histogram of the toal number of steps taeken each day after missing values are imputed}
+hist(imputedActivityDailySteps$steps, breaks = 20, 
+     xlab = "Steps Taken",
+     main = "Histogram of Total Number of Steps Taken per day (Imputed Values)")
+```
+
+Calculate the mean an median total number of steps each day. 
+
+```{r}
+imputedStepsSummary <- summarise(imputedActivityDailySteps,
+				 meanImputedSteps = mean(imputedActivityDailySteps$steps),
+				 medianImputedSteps = median(imputedActivityDailySteps$steps))
+```
+
+The mean of the data including imputed steps was `meanImputedSteps` steps and the median was `medianImputedSteps` steps. 
+
+## Question 5
+
+To compare the average number of steps we must format a new variable to categorize the observation as part of the weekday or weekend.
+
+
+```{r Panel plot comparing the average number of steps taken per 5- minute interval across week days and weekends}
+activityDays <- imputedActivity
+activityDays$days <- weekdays(activityDays$date)
+activityDays$weekday <- as.character(rep(0, times=17568))
+for(x in 1:17568) {
+    if(activityDays[x, 4] %in% c("Saturday", "Sunday")) {
+        activityDays[x, 5] <- "weekend"
+    } else {
+        activityDays[x, 5] <- "weekday"
+    }
+}
+activityDays$weekday <- factor(activityDays$weekday)
+
+```
+
+We can will separate the data into a weekday and weekend set.
+
+```{r}
+weekdayData <- activityDays[activityDays$weekday == "weekday",]
+weekendData <- activityDays[activityDays$weekday == "weekend",]
+```
+
+Then group the data by interval by the average number of steps
+
+```{r}
+weekdayMean <- aggregate(steps ~ interval, weekdayData, mean)
+weekendMean <- aggregate(steps ~ interval, weekendData, mean)
+```
+
+Last, create the final plot comparing the average number of steps taken per 5 min interval across weekdays and weekend. 
+
+```{r Panel plot comparing the average number of steps taken per 5- minute interval across weekdays and weekends}
+
+par(mfrow=c(2, 1), mar=c(4, 4.1, 3, 2.1))
+plot(weekdayMean$interval, weekdayMean$steps, type="l",
+     main="Time Series Plot of Average Steps Taken per Interval, for Weekdays",
+     xlab="Intervals (in 5 mins)", ylab="Number of Steps", col = "red")
+plot(weekendMean$interval, weekendMean$steps, type="l",
+     main="Time Series Plot of Average Steps Taken per Interval, for Weekends",
+     xlab="Intervals (in 5 mins)", ylab="Number of Steps", col = "green")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
