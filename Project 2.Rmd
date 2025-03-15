@@ -1,0 +1,377 @@
+## Reproducaible Research Course Project 2
+
+### Synopsis
+
+### Results
+
+Top Casualties
+Top Deaths
+Top Injuries
+
+Top Property Damage
+Top Crop Damage
+
+### Data Processing
+
+
+```{r Load Packages}
+
+library(tidyverse)
+library(lubridate)
+
+library(xtable)
+
+```
+
+```{r Import data}
+# download file
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2","./storm.csv")
+# read in data
+storm <- read_csv("./storm.csv")
+
+	
+```
+
+```{r view data}
+head(storm)
+unique(storm$STATE)
+unique(storm$EVTYPE)
+
+	
+```
+```{r format date}
+storm$date <- mdy_hms(storm$BGN_DATE)
+storm$year <- year(storm$date)
+storm$casualties <- storm$FATALITIES + storm$INJURIES
+storm$events <- 1
+
+
+storm_year <- aggregate(casualties ~ year, storm, sum)
+
+storm_year <- storm_year %>%
+	mutate(year = as.character(year))
+
+storm_year <- storm_year %>%
+	mutate(casualties = as.numeric(casualties))
+
+
+str(storm_year)
+#str(storms_per_year)
+
+storms_per_year <- storm %>% 
+	group_by(year) %>%
+	summarize(yearly_events = sum(events))
+
+storms_per_year$year <- as.character(storms_per_year$year)
+
+storms_per_year <- storms_per_year %>%
+	mutate(yearly_events = as.numeric(yearly_events))
+
+
+
+storm_year <- left_join(storm_year, storms_per_year, by = "year") %>%
+	mutate(casualties_per_storm = casualties/yearly_events)
+
+
+```
+
+There appears to be an increasing incidence of event occurance. Events have increased from 6000, to nearly 125,000 near 2010. The number of casualties (combined fatalities and injuries) has also increased. The trend in 1,250 in 1950 and jumping to over 3,750 in 2010. However, the number of casualties per storm fell rapidly during the 1950s and has remained near `storm_mean` cusualties per storm. 
+
+```{r }
+
+ggplot(storm, aes(x = date)) +
+	geom_histogram() +
+	theme_minimal()
+
+ggplot(storm_year, aes(x = year, y = casualties)) +
+	geom_point() +
+	geom_smooth(method = "lm", color = "red") +
+	labs(title = " Number Fatalities/Injuries by Year", 
+	     x = "Year", 
+	     y = "Total Casualties") +
+	theme_minimal()
+
+ggplot(storm_year, aes(x = year, y = casualties_per_storm)) +
+	geom_point() +
+	geom_smooth(method = "lm", color = "red") +
+	labs(title = " Number Fatalities/Injuries per Event by Year", 
+	     x = "Year", 
+	     y = "Casualties per Event") +
+	theme_minimal()
+
+storm_year$year <- as.numeric(storm_year$year)
+
+storm_mean <- storm_year %>%
+	filter(year > 1970) %>%
+	summarize(storm_mean = mean(casualties_per_storm))
+
+print(storm_mean)
+
+# multiply the factor designated in PROPDMGEXP 
+storm_adj <- storm %>%
+	mutate( property = case_when(
+		PROPDMGEXP == "K" ~ PROPDMG * 1000,
+		PROPDMGEXP == "M" ~ PROPDMG * 1000000,
+		PROPDMGEXP == "B" ~ PROPDMG * 1000000000
+		)) %>%
+	mutate( crop = case_when(
+		CROPDMGEXP == "K" ~ CROPDMG * 1000,
+		CROPDMGEXP == "M" ~ CROPDMG * 1000000,
+		CROPDMGEXP == "B" ~ CROPDMG * 1000000000
+		))
+			
+
+storm.dat <- storm_adj %>%
+	group_by(year, STATE, EVTYPE) %>%
+	summarize(
+		injuries = sum(INJURIES),
+		deaths = sum(FATALITIES),
+		casualties = sum(casualties),
+		Events = sum(events),
+		property = sum(as.numeric(property)),
+		crop = sum(as.numeric(crop)),
+		.groups = "drop"
+	)
+	
+```
+We can see by the charts below that some states have been seing an increase of events while others have seen little change. 
+```{r state occurances}
+ggplot(storm.dat, aes(x = year, y = Events)) +
+	geom_point() +
+	facet_wrap(~STATE) +
+	labs(title = " Event Count by State and Year",
+	     x = "Year",
+	     y = "Events") +
+	theme_minimal() + 
+	theme(legend.position = "none")
+```
+
+```{r property damage}
+ggplot(storm.dat, aes(x = year, y = property)) +
+	geom_point() +
+	facet_wrap(~STATE) +
+	labs(title = " Property Damage by State and Year",
+	     x = "Year",
+	     y = "Damage") +
+	theme_minimal() + 
+	theme(legend.position = "none")
+```
+
+## What events are most harmful
+Aggregating casualties by type shows that `high.casualty` caused the most deaths, injuries, and both combined. The top 5 events for deaths were `top.deaths`. Several events were among the top events that caused injury or death since 2000. While tornados caused the most injuries and deaths, hurricanes were among the top causes of death but not injuries. Excessive heat and lightning both appeared on both lists. The top 5 causes for both deaths and injuries were: `top.cas.list`. 
+
+```{r aggregate by event type}
+storm.agg <- storm_adj %>%
+	group_by(year, EVTYPE) %>%
+	summarize(
+		injuries = sum(INJURIES),
+		deaths = sum(FATALITIES),
+		casualties = sum(casualties),
+		Events = sum(events),
+		property = sum(as.numeric(property)),
+		crop = sum(as.numeric(crop)),
+		.groups = "drop"
+	)
+
+```
+
+```{r} 
+modern.cas.mean <- storm.agg %>%
+	filter(year > 2000) %>%
+	group_by(EVTYPE) %>%
+	summarize(cas.mean = mean(casualties),
+		  deaths.mean = mean(deaths),
+		  injuries.mean = mean(injuries),
+		  property.mean = mean(property),
+		  crop.mean = mean(crop)
+		  )
+
+high.casualty <- modern.cas.mean %>%
+	filter(cas.mean == max(cas.mean)) %>%
+	select(EVTYPE)
+
+high.deaths <- modern.cas.mean %>%
+	filter(deaths.mean == max(deaths.mean)) %>%
+	select(EVTYPE)
+
+high.injuries <- modern.cas.mean %>%
+	filter(injuries.mean == max(injuries.mean)) %>%
+	select(EVTYPE)
+
+top.cas <- modern.cas.mean %>%
+	arrange(desc(cas.mean)) %>%
+	head(5) %>% 
+	select(EVTYPE)
+
+top.inj <- modern.cas.mean %>%
+	arrange(desc(deaths.mean)) %>%
+	head(5) %>% 
+	select(EVTYPE)
+
+top.deaths <- modern.cas.mean %>%
+	arrange(desc(injuries.mean)) %>%
+	head(5) %>% 
+	select(EVTYPE)
+
+top.cas.list <- as.list(top.cas)
+top.cas <- unlist(top.cas)
+
+top.property <- modern.cas.mean %>%
+	arrange(desc(property.mean)) %>%
+	head(5) %>% 
+	select(EVTYPE)
+
+top.crop <- modern.cas.mean %>%
+	arrange(desc(crop.mean)) %>%
+	head(5) %>% 
+	select(EVTYPE)
+
+top.property <- unlist(top.property)
+top.crop <- unlist(top.crop)
+
+
+```
+
+
+
+```{r crop damage}
+ggplot(storm.dat, aes(x = year, y = crop)) +
+	geom_point() +
+	facet_wrap(~STATE) +
+	labs(title = " Crop Damage by State and Year",
+	     x = "Year",
+	     y = "Damange") +
+	theme_minimal() + 
+	theme(legend.position = "none")
+```
+
+
+```{r Evaluate each damage by Storm Type}
+# Aggregate total damage from all sources of damage
+total.storm <- storm_adj %>%
+	filter(EVTYPE %in% top.cas) %>%
+	group_by(EVTYPE) %>%
+	summarize(
+		injuries = sum(INJURIES),
+		deaths = sum(FATALITIES),
+		casualties = sum(casualties),
+		Events = sum(events),
+		property = sum(as.numeric(property)),
+		crop = sum(as.numeric(crop)),
+		.groups = "drop"
+	)
+
+
+```
+
+```{r Evaluate Deaths by Storm Type}
+ggplot(total.storm, aes(x = EVTYPE, y = deaths)) +
+	geom_bar(stat = "identity", fill = "red") +
+	labs(title = "Deaths by Event Type",
+	     x = "Event Type",
+	     y = "Deaths") +
+	theme_minimal() + 
+	theme(legend.position = "none")
+
+```
+
+
+
+
+
+```{r Evaluate Injuries by Storm Type}
+ggplot(total.storm, aes(x = EVTYPE, y = injuries)) +
+	geom_bar(stat = "identity", fill = "yellow") +
+	labs(title = "Injuries by Event Type",
+	     x = "Event Type",
+	     y = "Injuries") +
+	theme_minimal() + 
+	theme(legend.position = "none")
+
+```
+
+
+
+
+```{r Evaluate Casualties by Storm Type}
+ggplot(total.storm, aes(x = EVTYPE, y = casualties)) +
+	geom_bar(stat = "identity", fill = "blue") +
+	labs(title = " Casualties by Event Type",
+	     x = "Event Type",
+	     y = "Casualties") +
+	theme_minimal() + 
+	theme(legend.position = "none")
+
+```
+
+```{r Number of events by event type}
+
+ggplot(total.storm, aes(x = EVTYPE, y = Events)) +
+	geom_bar(stat = "identity", fill = "purple") +
+	labs(title = "Events by Type",
+	     x = "Event Type",
+	     y = "Events") +
+	theme_minimal()
+
+
+```
+
+The top 5 storms that cause the most property damage include `as.list(top.property)` and the only storm that causes crop damage is `top.crop[1]`. The following chart shows how much property damage each of the top 5 storms have caused since begining to track this data. 
+
+
+```{r}
+
+property.storm <- storm_adj %>%
+	filter(EVTYPE %in% top.property) %>%
+	group_by(EVTYPE) %>%
+	summarize(
+		injuries = sum(INJURIES),
+		deaths = sum(FATALITIES),
+		casualties = sum(casualties),
+		Events = sum(events),
+		property = sum(as.numeric(property)),
+		crop = sum(as.numeric(crop)),
+		.groups = "drop"
+	)
+
+crop.storm <- storm_adj %>%
+	filter(EVTYPE %in% top.crop) %>%
+	group_by(EVTYPE) %>%
+	summarize(
+		injuries = sum(INJURIES),
+		deaths = sum(FATALITIES),
+		casualties = sum(casualties),
+		Events = sum(events),
+		property = sum(as.numeric(property)),
+		crop = sum(as.numeric(crop)),
+		.groups = "drop"
+	)
+```
+
+
+```{r Property damage by event type}
+
+ggplot(property.storm, aes(x = EVTYPE, y = property)) +
+	geom_bar(stat = "identity", fill = "purple") +
+	labs(title = "Property Damage by Type",
+	     x = "Event Type",
+	     y = "Property Damage") +
+	theme_minimal()
+
+
+```
+
+```{r Crop damage by event type}
+
+ggplot(crop.storm, aes(x = EVTYPE, y = crop)) +
+	geom_bar(stat = "identity", fill = "wheat") +
+	labs(title = "Crop Damage by Type",
+	     x = "Event Type",
+	     y = "Crop Damage") +
+	theme_minimal()
+
+
+```
+
+
+
